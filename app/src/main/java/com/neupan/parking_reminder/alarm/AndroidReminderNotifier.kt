@@ -7,13 +7,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioAttributes
 import android.media.AudioManager
-import android.media.Ringtone
-import android.media.RingtoneManager
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -29,10 +24,8 @@ class AndroidReminderNotifier(
     private val ringtonePreferences: RingtonePreferences,
 ) : ReminderNotifier {
 
-    private var activeRingtone: Ringtone? = null
-
     override val isAlarmPlaying: Boolean
-        get() = activeRingtone?.isPlaying == true
+        get() = AlarmSoundService.isRunning
 
     override suspend fun showReminder(
         plan: ReminderPlan,
@@ -50,6 +43,15 @@ class AndroidReminderNotifier(
         val text = contentText(plan)
         Log.d(TAG, "showReminder() posting notification: $text")
 
+        val stopAlarmIntent = PendingIntent.getService(
+            context,
+            STOP_ALARM_REQUEST_CODE,
+            Intent(context, AlarmSoundService::class.java).apply {
+                action = AlarmSoundService.ACTION_STOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("停车缴费提醒")
@@ -60,55 +62,29 @@ class AndroidReminderNotifier(
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(0, "停止铃声", stopAlarmIntent)
             .setSilent(true)
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         Log.d(TAG, "showReminder() notification posted (id=$NOTIFICATION_ID)")
 
-        playAlarmSound()
+        playAlarmSound(text)
     }
 
-    private fun playAlarmSound() {
+    private fun playAlarmSound(notificationText: String) {
         try {
-            stopAlarmSound()
-
             val alarmUri = ringtonePreferences.getAlarmUriResolved(context)
-            Log.d(TAG, "playAlarmSound() uri=$alarmUri")
-
-            val ringtone = RingtoneManager.getRingtone(context, alarmUri)
-            if (ringtone == null) {
-                Log.e(TAG, "playAlarmSound() getRingtone returned null!")
-                return
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                ringtone.isLooping = true
-            }
-            ringtone.audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            ringtone.play()
-            activeRingtone = ringtone
-            Log.d(TAG, "playAlarmSound() playing=${ringtone.isPlaying}")
-
-            Handler(Looper.getMainLooper()).postDelayed({
-                stopAlarmSound()
-            }, ALARM_DURATION_MS)
+            Log.d(TAG, "playAlarmSound() starting AlarmSoundService uri=$alarmUri")
+            AlarmSoundService.startAlarm(context, alarmUri, notificationText)
         } catch (e: Exception) {
             Log.e(TAG, "playAlarmSound() EXCEPTION", e)
         }
     }
 
     override fun stopAlarmSound() {
-        activeRingtone?.let {
-            if (it.isPlaying) {
-                it.stop()
-                Log.d(TAG, "stopAlarmSound() stopped previous ringtone")
-            }
-        }
-        activeRingtone = null
+        Log.d(TAG, "stopAlarmSound() stopping AlarmSoundService")
+        AlarmSoundService.stopAlarm(context)
     }
 
     private fun canPostNotifications(): Boolean {
@@ -195,7 +171,7 @@ class AndroidReminderNotifier(
         private const val TAG = "Notifier"
         const val CHANNEL_ID = "parking_alarm"
         private const val NOTIFICATION_ID = 3001
-        private const val OPEN_APP_REQUEST_CODE = 3002
-        private const val ALARM_DURATION_MS = 15_000L
+        private const val OPEN_APP_REQUEST_CODE = 3003
+        private const val STOP_ALARM_REQUEST_CODE = 3004
     }
 }

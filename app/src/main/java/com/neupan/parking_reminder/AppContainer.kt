@@ -66,6 +66,7 @@ class AppContainer(context: Context) {
     val reminderNotifier = AndroidReminderNotifier(appContext, ringtonePreferences)
 
     val reminderResyncService = ReminderResyncService(
+        context = appContext,
         parkingRepository = parkingRepository,
         reminderStateRepository = reminderStateRepository,
         parkingStateResolver = parkingStateResolver,

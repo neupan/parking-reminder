@@ -1,5 +1,6 @@
 package com.neupan.parking_reminder.alarm
 
+import android.content.Context
 import android.util.Log
 import com.neupan.parking_reminder.alarm.model.ReminderAlarmPayload
 import com.neupan.parking_reminder.alarm.model.ReminderScheduleResult
@@ -15,6 +16,7 @@ import com.neupan.parking_reminder.domain.time.AppClock
 import java.time.Instant
 
 class ReminderResyncService(
+    private val context: Context,
     private val parkingRepository: ParkingRepository,
     private val reminderStateRepository: ReminderStateRepository,
     private val parkingStateResolver: ParkingStateResolver,
@@ -29,6 +31,7 @@ class ReminderResyncService(
 
         if (activeSession == null) {
             Log.d(TAG, "resync() no active session → cancel")
+            ParkingMonitorService.stop(context)
             cancelAndMark(now)
             return
         }
@@ -42,6 +45,7 @@ class ReminderResyncService(
 
         if (nextPlan == null) {
             Log.d(TAG, "resync() no next plan → cancel")
+            ParkingMonitorService.stop(context)
             cancelAndMark(now)
             return
         }
@@ -51,6 +55,7 @@ class ReminderResyncService(
         when (val result = reminderScheduler.schedule(nextPlan)) {
             is ReminderScheduleResult.Success -> {
                 Log.d(TAG, "resync() alarm scheduled OK")
+                ParkingMonitorService.start(context, "停车监控中 · 提醒已安排")
                 reminderStateRepository.markScheduled(
                     plan = nextPlan,
                     scheduledAt = now,
