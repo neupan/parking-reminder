@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
+    onOpenExactAlarmSettings: () -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -48,6 +49,7 @@ fun HomeScreen(
         uiState = uiState,
         onStartParking = viewModel::onStartParkingClicked,
         onCheckout = viewModel::onCheckoutClicked,
+        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
     )
 }
 
@@ -56,6 +58,7 @@ private fun HomeScreenContent(
     uiState: HomeUiState,
     onStartParking: () -> Unit,
     onCheckout: () -> Unit,
+    onOpenExactAlarmSettings: () -> Unit,
 ) {
     Scaffold { innerPadding ->
         Box(
@@ -86,7 +89,10 @@ private fun HomeScreenContent(
                     onCheckout = onCheckout,
                 )
 
-                ReminderPanel(uiState.reminderHealth)
+                ReminderPanel(
+                    reminderHealth = uiState.reminderHealth,
+                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                )
             }
         }
     }
@@ -261,40 +267,60 @@ private fun ActionPanel(
 }
 
 @Composable
-private fun ReminderPanel(reminderHealth: ReminderHealthUiState) {
+private fun ReminderPanel(
+    reminderHealth: ReminderHealthUiState,
+    onOpenExactAlarmSettings: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = PanelColor.copy(alpha = 0.84f)),
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(reminderLevelColor(reminderHealth.level)),
-            )
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = reminderHealth.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(reminderLevelColor(reminderHealth.level)),
                 )
-                val detail = reminderHealth.nextReminderText ?: reminderHealth.message
-                if (detail != null) {
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
-                        text = detail,
+                        text = reminderHealth.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    val detail = reminderHealth.nextReminderText ?: reminderHealth.message
+                    if (detail != null) {
+                        Text(
+                            text = detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.64f),
+                        )
+                    }
+                }
+            }
+
+            if (reminderHealth.showOpenExactAlarmSettingsAction) {
+                OutlinedButton(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    onClick = onOpenExactAlarmSettings,
+                ) {
+                    Text(
+                        text = "打开闹钟和提醒权限",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.64f),
                     )
                 }
             }

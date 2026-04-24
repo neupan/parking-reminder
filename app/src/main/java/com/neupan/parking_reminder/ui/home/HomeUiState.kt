@@ -38,6 +38,7 @@ data class ReminderHealthUiState(
     val title: String = "提醒正常",
     val message: String? = null,
     val nextReminderText: String? = null,
+    val showOpenExactAlarmSettingsAction: Boolean = false,
 )
 
 enum class ReminderHealthLevel {

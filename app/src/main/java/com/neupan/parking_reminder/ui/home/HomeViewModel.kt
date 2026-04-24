@@ -219,6 +219,8 @@ class HomeViewModel(
                 level = ReminderHealthLevel.BLOCKED,
                 title = "提醒注册失败",
                 message = failureReason,
+                showOpenExactAlarmSettingsAction = failureReason
+                    ?.contains("Exact alarm", ignoreCase = true) == true,
             )
             ReminderScheduleStatus.CANCELED -> ReminderHealthUiState(
                 level = ReminderHealthLevel.WARNING,
