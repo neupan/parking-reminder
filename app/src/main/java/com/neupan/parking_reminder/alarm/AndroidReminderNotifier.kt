@@ -8,7 +8,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.Ringtone
+import android.media.RingtoneManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -23,6 +28,9 @@ import com.neupan.parking_reminder.domain.model.ReminderType
 class AndroidReminderNotifier(
     private val context: Context,
 ) : ReminderNotifier {
+
+    private var activeRingtone: Ringtone? = null
+
     override suspend fun showReminder(
         plan: ReminderPlan,
         snapshot: ParkingSnapshot,
@@ -35,8 +43,10 @@ class AndroidReminderNotifier(
         }
 
         ensureChannel()
+        logAudioState()
         val text = contentText(plan)
         Log.d(TAG, "showReminder() posting notification: $text")
+
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("停车缴费提醒")
@@ -47,10 +57,57 @@ class AndroidReminderNotifier(
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setSilent(true)
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
         Log.d(TAG, "showReminder() notification posted (id=$NOTIFICATION_ID)")
+
+        playAlarmSound()
+    }
+
+    private fun playAlarmSound() {
+        try {
+            stopAlarmSound()
+
+            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                ?: Settings.System.DEFAULT_ALARM_ALERT_URI
+            Log.d(TAG, "playAlarmSound() uri=$alarmUri")
+
+            val ringtone = RingtoneManager.getRingtone(context, alarmUri)
+            if (ringtone == null) {
+                Log.e(TAG, "playAlarmSound() getRingtone returned null!")
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                ringtone.isLooping = true
+            }
+            ringtone.audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+            ringtone.play()
+            activeRingtone = ringtone
+            Log.d(TAG, "playAlarmSound() playing=${ringtone.isPlaying}")
+
+            Handler(Looper.getMainLooper()).postDelayed({
+                stopAlarmSound()
+            }, ALARM_DURATION_MS)
+        } catch (e: Exception) {
+            Log.e(TAG, "playAlarmSound() EXCEPTION", e)
+        }
+    }
+
+    private fun stopAlarmSound() {
+        activeRingtone?.let {
+            if (it.isPlaying) {
+                it.stop()
+                Log.d(TAG, "stopAlarmSound() stopped previous ringtone")
+            }
+        }
+        activeRingtone = null
     }
 
     private fun canPostNotifications(): Boolean {
@@ -70,9 +127,13 @@ class AndroidReminderNotifier(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val nm = context.getSystemService(NotificationManager::class.java)
+
         val existing = nm.getNotificationChannel(CHANNEL_ID)
-        Log.d(TAG, "ensureChannel() existing=${existing != null} " +
-            "importance=${existing?.importance} sound=${existing?.sound}")
+        if (existing != null) {
+            Log.d(TAG, "ensureChannel() deleting stale channel to force re-create " +
+                "(importance=${existing.importance} sound=${existing.sound})")
+            nm.deleteNotificationChannel(CHANNEL_ID)
+        }
 
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -82,18 +143,34 @@ class AndroidReminderNotifier(
             description = "停车费用即将变化时提醒"
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
             enableVibration(true)
-            setSound(
-                Settings.System.DEFAULT_ALARM_ALERT_URI,
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build(),
-            )
+            setSound(null, null)
         }
         nm.createNotificationChannel(channel)
         val after = nm.getNotificationChannel(CHANNEL_ID)
-        Log.d(TAG, "ensureChannel() after create: importance=${after?.importance} " +
+        Log.d(TAG, "ensureChannel() created: importance=${after?.importance} " +
             "sound=${after?.sound} vibration=${after?.shouldVibrate()}")
+    }
+
+    private fun logAudioState() {
+        val am = context.getSystemService(AudioManager::class.java)
+        val alarmVol = am.getStreamVolume(AudioManager.STREAM_ALARM)
+        val alarmMax = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+        val ringerMode = when (am.ringerMode) {
+            AudioManager.RINGER_MODE_SILENT -> "SILENT"
+            AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
+            AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+            else -> "UNKNOWN(${am.ringerMode})"
+        }
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val dndFilter = nm.currentInterruptionFilter
+        val dndText = when (dndFilter) {
+            NotificationManager.INTERRUPTION_FILTER_ALL -> "OFF"
+            NotificationManager.INTERRUPTION_FILTER_PRIORITY -> "PRIORITY_ONLY"
+            NotificationManager.INTERRUPTION_FILTER_NONE -> "TOTAL_SILENCE"
+            NotificationManager.INTERRUPTION_FILTER_ALARMS -> "ALARMS_ONLY"
+            else -> "UNKNOWN($dndFilter)"
+        }
+        Log.d(TAG, "audioState() alarmVolume=$alarmVol/$alarmMax ringer=$ringerMode dnd=$dndText")
     }
 
     private fun openAppPendingIntent(): PendingIntent {
@@ -118,5 +195,6 @@ class AndroidReminderNotifier(
         const val CHANNEL_ID = "parking_alarm"
         private const val NOTIFICATION_ID = 3001
         private const val OPEN_APP_REQUEST_CODE = 3002
+        private const val ALARM_DURATION_MS = 15_000L
     }
 }
