@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.neupan.parking_reminder.AppContainer
+import com.neupan.parking_reminder.alarm.ReminderNotifier
 import com.neupan.parking_reminder.alarm.ReminderResyncService
 import com.neupan.parking_reminder.alarm.model.ReminderSyncReason
 import com.neupan.parking_reminder.domain.model.BillingQuote
@@ -40,6 +41,7 @@ class HomeViewModel(
     private val reminderStateRepository: ReminderStateRepository,
     private val parkingCommandService: ParkingCommandService,
     private val reminderResyncService: ReminderResyncService,
+    private val reminderNotifier: ReminderNotifier,
     private val parkingStateResolver: ParkingStateResolver,
     private val ruleConfig: ParkingRuleConfig,
     private val clock: AppClock,
@@ -101,6 +103,11 @@ class HomeViewModel(
             runCatching { parkingCommandService.checkout() }
                 .onFailure { Log.e(TAG, "checkout failed", it) }
         }
+    }
+
+    fun onStopAlarmClicked() {
+        Log.d(TAG, "onStopAlarmClicked()")
+        reminderNotifier.stopAlarmSound()
     }
 
     private suspend fun buildUiState(
@@ -336,6 +343,7 @@ class HomeViewModel(
                 reminderStateRepository = appContainer.reminderStateRepository,
                 parkingCommandService = appContainer.parkingCommandService,
                 reminderResyncService = appContainer.reminderResyncService,
+                reminderNotifier = appContainer.reminderNotifier,
                 parkingStateResolver = appContainer.parkingStateResolver,
                 ruleConfig = appContainer.ruleConfig,
                 clock = appContainer.clock,

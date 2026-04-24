@@ -42,6 +42,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 fun HomeScreen(
     viewModel: HomeViewModel,
     onOpenExactAlarmSettings: () -> Unit,
+    onPickRingtone: () -> Unit,
+    alarmRingtoneTitle: String,
+    isAlarmPlaying: Boolean,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
@@ -49,7 +52,11 @@ fun HomeScreen(
         uiState = uiState,
         onStartParking = viewModel::onStartParkingClicked,
         onCheckout = viewModel::onCheckoutClicked,
+        onStopAlarm = viewModel::onStopAlarmClicked,
         onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+        onPickRingtone = onPickRingtone,
+        alarmRingtoneTitle = alarmRingtoneTitle,
+        isAlarmPlaying = isAlarmPlaying,
     )
 }
 
@@ -58,7 +65,11 @@ private fun HomeScreenContent(
     uiState: HomeUiState,
     onStartParking: () -> Unit,
     onCheckout: () -> Unit,
+    onStopAlarm: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
+    onPickRingtone: () -> Unit,
+    alarmRingtoneTitle: String,
+    isAlarmPlaying: Boolean,
 ) {
     Scaffold { innerPadding ->
         Box(
@@ -84,6 +95,10 @@ private fun HomeScreenContent(
                     ruleModeText = uiState.ruleModeText,
                 )
 
+                if (isAlarmPlaying) {
+                    StopAlarmBanner(onStopAlarm = onStopAlarm)
+                }
+
                 StatusPanel(uiState)
 
                 ActionPanel(
@@ -95,6 +110,11 @@ private fun HomeScreenContent(
                 ReminderPanel(
                     reminderHealth = uiState.reminderHealth,
                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                )
+
+                RingtonePickerRow(
+                    ringtoneTitle = alarmRingtoneTitle,
+                    onPickRingtone = onPickRingtone,
                 )
             }
         }
@@ -343,6 +363,73 @@ private fun ReminderPanel(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StopAlarmBanner(onStopAlarm: () -> Unit) {
+    Button(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = UrgentColor,
+            contentColor = Color.White,
+        ),
+        shape = RoundedCornerShape(8.dp),
+        onClick = onStopAlarm,
+    ) {
+        Text(
+            text = "停止提醒铃声",
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
+        )
+    }
+}
+
+@Composable
+private fun RingtonePickerRow(
+    ringtoneTitle: String,
+    onPickRingtone: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PanelColor.copy(alpha = 0.84f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = "提醒铃声",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = ringtoneTitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.64f),
+                )
+            }
+            OutlinedButton(
+                shape = RoundedCornerShape(8.dp),
+                onClick = onPickRingtone,
+            ) {
+                Text(
+                    text = "更换",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
     }

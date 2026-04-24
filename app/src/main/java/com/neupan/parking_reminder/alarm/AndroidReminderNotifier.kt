@@ -14,7 +14,6 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -27,9 +26,13 @@ import com.neupan.parking_reminder.domain.model.ReminderType
 
 class AndroidReminderNotifier(
     private val context: Context,
+    private val ringtonePreferences: RingtonePreferences,
 ) : ReminderNotifier {
 
     private var activeRingtone: Ringtone? = null
+
+    override val isAlarmPlaying: Boolean
+        get() = activeRingtone?.isPlaying == true
 
     override suspend fun showReminder(
         plan: ReminderPlan,
@@ -70,9 +73,7 @@ class AndroidReminderNotifier(
         try {
             stopAlarmSound()
 
-            val alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                ?: Settings.System.DEFAULT_ALARM_ALERT_URI
+            val alarmUri = ringtonePreferences.getAlarmUriResolved(context)
             Log.d(TAG, "playAlarmSound() uri=$alarmUri")
 
             val ringtone = RingtoneManager.getRingtone(context, alarmUri)
@@ -100,7 +101,7 @@ class AndroidReminderNotifier(
         }
     }
 
-    private fun stopAlarmSound() {
+    override fun stopAlarmSound() {
         activeRingtone?.let {
             if (it.isPlaying) {
                 it.stop()

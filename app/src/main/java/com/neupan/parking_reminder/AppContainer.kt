@@ -6,6 +6,7 @@ import androidx.room.Room
 import com.neupan.parking_reminder.alarm.AndroidReminderNotifier
 import com.neupan.parking_reminder.alarm.ReminderAlarmScheduler
 import com.neupan.parking_reminder.alarm.ReminderResyncService
+import com.neupan.parking_reminder.alarm.RingtonePreferences
 import com.neupan.parking_reminder.data.AppDatabase
 import com.neupan.parking_reminder.data.repository.RoomParkingRepository
 import com.neupan.parking_reminder.data.repository.RoomReminderStateRepository
@@ -60,7 +61,9 @@ class AppContainer(context: Context) {
         alarmManager = appContext.getSystemService(AlarmManager::class.java),
     )
 
-    private val reminderNotifier = AndroidReminderNotifier(appContext)
+    val ringtonePreferences = RingtonePreferences(appContext)
+
+    val reminderNotifier = AndroidReminderNotifier(appContext, ringtonePreferences)
 
     val reminderResyncService = ReminderResyncService(
         parkingRepository = parkingRepository,

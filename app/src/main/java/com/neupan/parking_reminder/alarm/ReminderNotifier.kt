@@ -8,4 +8,8 @@ interface ReminderNotifier {
         plan: ReminderPlan,
         snapshot: ParkingSnapshot,
     )
+
+    fun stopAlarmSound()
+
+    val isAlarmPlaying: Boolean
 }
