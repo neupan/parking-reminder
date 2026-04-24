@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -26,14 +27,21 @@ class AndroidReminderNotifier(
         plan: ReminderPlan,
         snapshot: ParkingSnapshot,
     ) {
-        if (!canPostNotifications()) return
+        val canPost = canPostNotifications()
+        Log.d(TAG, "showReminder() type=${plan.reminderType} fee=${plan.targetFeeYuan} canPost=$canPost")
+        if (!canPost) {
+            Log.e(TAG, "showReminder() ABORTED — POST_NOTIFICATIONS not granted")
+            return
+        }
 
         ensureChannel()
+        val text = contentText(plan)
+        Log.d(TAG, "showReminder() posting notification: $text")
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentTitle("停车缴费提醒")
-            .setContentText(contentText(plan))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText(plan)))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(openAppPendingIntent())
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -42,18 +50,29 @@ class AndroidReminderNotifier(
             .build()
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+        Log.d(TAG, "showReminder() notification posted (id=$NOTIFICATION_ID)")
     }
 
     private fun canPostNotifications(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Log.d(TAG, "canPostNotifications() SDK < 33, auto-granted")
+            return true
+        }
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        Log.d(TAG, "canPostNotifications() SDK=${Build.VERSION.SDK_INT} granted=$granted")
+        return granted
     }
 
     private fun ensureChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        val nm = context.getSystemService(NotificationManager::class.java)
+        val existing = nm.getNotificationChannel(CHANNEL_ID)
+        Log.d(TAG, "ensureChannel() existing=${existing != null} " +
+            "importance=${existing?.importance} sound=${existing?.sound}")
 
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -71,8 +90,10 @@ class AndroidReminderNotifier(
                     .build(),
             )
         }
-        context.getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(channel)
+        nm.createNotificationChannel(channel)
+        val after = nm.getNotificationChannel(CHANNEL_ID)
+        Log.d(TAG, "ensureChannel() after create: importance=${after?.importance} " +
+            "sound=${after?.sound} vibration=${after?.shouldVibrate()}")
     }
 
     private fun openAppPendingIntent(): PendingIntent {
@@ -93,6 +114,7 @@ class AndroidReminderNotifier(
     }
 
     companion object {
+        private const val TAG = "Notifier"
         const val CHANNEL_ID = "parking_alarm"
         private const val NOTIFICATION_ID = 3001
         private const val OPEN_APP_REQUEST_CODE = 3002

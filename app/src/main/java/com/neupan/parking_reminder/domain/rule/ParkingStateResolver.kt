@@ -1,5 +1,6 @@
 package com.neupan.parking_reminder.domain.rule
 
+import android.util.Log
 import com.neupan.parking_reminder.domain.model.CoverageWindow
 import com.neupan.parking_reminder.domain.model.ParkingSession
 import com.neupan.parking_reminder.domain.model.ParkingSnapshot
@@ -15,6 +16,7 @@ class ParkingStateResolver(
         matchedCoverageWindow: CoverageWindow?,
     ): ParkingSnapshot {
         if (activeSession == null) {
+            Log.d(TAG, "resolve() no active session → Idle")
             return ParkingSnapshot(
                 now = now,
                 activeSession = null,
@@ -29,6 +31,7 @@ class ParkingStateResolver(
             matchedCoverageWindow = matchedCoverageWindow,
             now = now,
         )
+        Log.d(TAG, "resolve() status=${quote.status} fee=${quote.currentFeeYuan} nextCharge=${quote.nextChargeAt}")
         val reminderPlan = reminderPlanner.planNextReminder(
             session = activeSession,
             quote = quote,
@@ -42,5 +45,9 @@ class ParkingStateResolver(
             billingQuote = quote,
             nextReminderPlan = reminderPlan,
         )
+    }
+
+    companion object {
+        private const val TAG = "StateResolver"
     }
 }

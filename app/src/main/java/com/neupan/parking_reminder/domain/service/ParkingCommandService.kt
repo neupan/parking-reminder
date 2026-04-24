@@ -1,5 +1,6 @@
 package com.neupan.parking_reminder.domain.service
 
+import android.util.Log
 import com.neupan.parking_reminder.alarm.ReminderResyncService
 import com.neupan.parking_reminder.alarm.model.ReminderSyncReason
 import com.neupan.parking_reminder.domain.repository.ParkingRepository
@@ -12,14 +13,17 @@ class ParkingCommandService(
     private val clock: AppClock,
 ) {
     suspend fun startParking(entryAt: Instant = clock.now()) {
+        Log.d(TAG, "startParking() entryAt=$entryAt")
         parkingRepository.startParking(
             entryAt = entryAt,
             now = clock.now(),
         )
+        Log.d(TAG, "startParking() DB updated, triggering resync")
         reminderResyncService.resync(ReminderSyncReason.USER_STARTED_PARKING)
     }
 
     suspend fun updateEntryTime(entryAt: Instant) {
+        Log.d(TAG, "updateEntryTime() entryAt=$entryAt")
         parkingRepository.updateEntryTime(
             entryAt = entryAt,
             now = clock.now(),
@@ -28,6 +32,7 @@ class ParkingCommandService(
     }
 
     suspend fun checkout() {
+        Log.d(TAG, "checkout()")
         parkingRepository.checkout(
             exitAt = clock.now(),
             now = clock.now(),
@@ -36,6 +41,11 @@ class ParkingCommandService(
     }
 
     suspend fun clearHistory() {
+        Log.d(TAG, "clearHistory()")
         parkingRepository.clearHistory()
+    }
+
+    companion object {
+        private const val TAG = "ParkCmd"
     }
 }

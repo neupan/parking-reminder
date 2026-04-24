@@ -31,6 +31,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import android.util.Log
+
+private const val TAG = "HomeVM"
 
 class HomeViewModel(
     private val parkingRepository: ParkingRepository,
@@ -77,20 +80,26 @@ class HomeViewModel(
         )
 
     init {
+        Log.d(TAG, "init → resync(APP_COLD_START)")
         viewModelScope.launch {
             reminderResyncService.resync(ReminderSyncReason.APP_COLD_START)
+            Log.d(TAG, "init resync done")
         }
     }
 
     fun onStartParkingClicked() {
+        Log.d(TAG, "onStartParkingClicked()")
         viewModelScope.launch {
             runCatching { parkingCommandService.startParking() }
+                .onFailure { Log.e(TAG, "startParking failed", it) }
         }
     }
 
     fun onCheckoutClicked() {
+        Log.d(TAG, "onCheckoutClicked()")
         viewModelScope.launch {
             runCatching { parkingCommandService.checkout() }
+                .onFailure { Log.e(TAG, "checkout failed", it) }
         }
     }
 

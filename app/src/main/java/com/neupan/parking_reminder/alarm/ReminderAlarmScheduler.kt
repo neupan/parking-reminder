@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import com.neupan.parking_reminder.MainActivity
 import com.neupan.parking_reminder.alarm.model.ReminderAlarmPayload
 import com.neupan.parking_reminder.alarm.model.ReminderScheduleResult
@@ -15,7 +16,11 @@ class ReminderAlarmScheduler(
     private val alarmManager: AlarmManager,
 ) : ReminderScheduler {
     override suspend fun schedule(plan: ReminderPlan): ReminderScheduleResult {
-        if (!canScheduleExactAlarms()) {
+        val canSchedule = canScheduleExactAlarms()
+        Log.d(TAG, "schedule() canScheduleExactAlarms=$canSchedule " +
+            "type=${plan.reminderType} triggerAt=${plan.triggerAt} epochMs=${plan.triggerAt.toEpochMilli()}")
+        if (!canSchedule) {
+            Log.e(TAG, "schedule() REJECTED — exact alarm not available")
             return ReminderScheduleResult.Failure("Exact alarm capability is not available.")
         }
 
@@ -31,23 +36,36 @@ class ReminderAlarmScheduler(
                 AlarmManager.AlarmClockInfo(plan.triggerAt.toEpochMilli(), showIntent),
                 operation,
             )
+            Log.d(TAG, "schedule() setAlarmClock called OK")
         }.fold(
             onSuccess = { ReminderScheduleResult.Success(plan) },
-            onFailure = { ReminderScheduleResult.Failure(it.message ?: "Unable to schedule alarm.") },
+            onFailure = {
+                Log.e(TAG, "schedule() setAlarmClock EXCEPTION", it)
+                ReminderScheduleResult.Failure(it.message ?: "Unable to schedule alarm.")
+            },
         )
     }
 
     override suspend fun cancelCurrent(): ReminderScheduleResult {
+        Log.d(TAG, "cancelCurrent()")
         return runCatching {
             alarmManager.cancel(reminderPendingIntent(null))
         }.fold(
-            onSuccess = { ReminderScheduleResult.Success(null) },
-            onFailure = { ReminderScheduleResult.Failure(it.message ?: "Unable to cancel alarm.") },
+            onSuccess = {
+                Log.d(TAG, "cancelCurrent() OK")
+                ReminderScheduleResult.Success(null)
+            },
+            onFailure = {
+                Log.e(TAG, "cancelCurrent() EXCEPTION", it)
+                ReminderScheduleResult.Failure(it.message ?: "Unable to cancel alarm.")
+            },
         )
     }
 
     override fun canScheduleExactAlarms(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+        val result = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
+        Log.d(TAG, "canScheduleExactAlarms() SDK=${Build.VERSION.SDK_INT} result=$result")
+        return result
     }
 
     private fun reminderPendingIntent(plan: ReminderPlan?): PendingIntent {
@@ -68,6 +86,7 @@ class ReminderAlarmScheduler(
     }
 
     companion object {
+        private const val TAG = "AlarmScheduler"
         const val ACTION_PARKING_REMINDER = "com.neupan.parking_reminder.action.PARKING_REMINDER"
         private const val REMINDER_REQUEST_CODE = 2001
         private const val OPEN_APP_REQUEST_CODE = 2002

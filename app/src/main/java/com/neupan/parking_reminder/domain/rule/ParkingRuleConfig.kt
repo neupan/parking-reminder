@@ -29,10 +29,10 @@ data class ParkingRuleConfig(
         )
 
         val DebugFast = ParkingRuleConfig(
-            freeDuration = Duration.ofMinutes(2),
-            billingCycle = Duration.ofMinutes(5),
-            reminderLeadTime = Duration.ofMinutes(1),
-            coverageDuration = Duration.ofMinutes(5),
+            freeDuration = Duration.ofSeconds(30),
+            billingCycle = Duration.ofMinutes(1),
+            reminderLeadTime = Duration.ofSeconds(20),
+            coverageDuration = Duration.ofMinutes(1),
             isTestMode = true,
         )
     }

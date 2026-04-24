@@ -1,5 +1,6 @@
 package com.neupan.parking_reminder.domain.rule
 
+import android.util.Log
 import com.neupan.parking_reminder.domain.model.BillingQuote
 import com.neupan.parking_reminder.domain.model.ParkingSession
 import com.neupan.parking_reminder.domain.model.ParkingStatus
@@ -16,7 +17,8 @@ class ReminderPlanner(
         quote: BillingQuote,
         now: Instant,
     ): ReminderPlan? {
-        return when (val status = quote.status) {
+        Log.d(TAG, "planNextReminder() status=${quote.status} now=$now entryAt=${session.entryAt}")
+        val plan = when (val status = quote.status) {
             ParkingStatus.Idle -> null
             is ParkingStatus.ParkingFree,
             is ParkingStatus.ParkingCharged -> planFreshSessionReminder(session, now)
@@ -31,6 +33,8 @@ class ReminderPlanner(
                 now = now,
             )
         }
+        Log.d(TAG, "planNextReminder() → type=${plan?.reminderType} triggerAt=${plan?.triggerAt} fee=${plan?.targetFeeYuan}")
+        return plan
     }
 
     private fun planFreshSessionReminder(
@@ -38,6 +42,7 @@ class ReminderPlanner(
         now: Instant,
     ): ReminderPlan {
         val freeEndingReminderAt = session.entryAt.plus(ruleConfig.freeDuration).minus(ruleConfig.reminderLeadTime)
+        Log.d(TAG, "planFresh() freeEndingReminderAt=$freeEndingReminderAt isAfterNow=${freeEndingReminderAt.isAfter(now)}")
         if (freeEndingReminderAt.isAfter(now)) {
             return ReminderPlan(
                 sessionId = session.id,
@@ -61,6 +66,7 @@ class ReminderPlanner(
         now: Instant,
     ): ReminderPlan {
         val coverageEndingReminderAt = coverageEndAt.minus(ruleConfig.reminderLeadTime)
+        Log.d(TAG, "planCovered() coverageEndingReminderAt=$coverageEndingReminderAt isAfterNow=${coverageEndingReminderAt.isAfter(now)}")
         if (coverageEndingReminderAt.isAfter(now)) {
             return ReminderPlan(
                 sessionId = session.id,
@@ -100,6 +106,8 @@ class ReminderPlanner(
         }
         val triggerAt = firstReminderAt.plus(ruleConfig.billingCycle.multipliedBy(cycleOffset))
         val targetFeeYuan = firstTargetFeeYuan + (BASE_FEE_YUAN * cycleOffset.toInt())
+        Log.d(TAG, "planCycle() firstBoundary=$firstBoundaryAt firstReminderAt=$firstReminderAt " +
+            "cycleOffset=$cycleOffset → triggerAt=$triggerAt fee=$targetFeeYuan")
 
         return ReminderPlan(
             sessionId = sessionId,
@@ -110,6 +118,7 @@ class ReminderPlanner(
     }
 
     private companion object {
+        const val TAG = "ReminderPlanner"
         const val BASE_FEE_YUAN = 5
     }
 }
