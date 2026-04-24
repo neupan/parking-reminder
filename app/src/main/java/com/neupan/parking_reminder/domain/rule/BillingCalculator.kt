@@ -9,6 +9,7 @@ import java.time.Duration
 import java.time.Instant
 
 class BillingCalculator(
+    private val ruleConfig: ParkingRuleConfig = ParkingRuleConfig.Production,
     private val coverageMatcher: CoverageMatcher = CoverageMatcher(),
 ) {
     fun calculate(
@@ -28,8 +29,8 @@ class BillingCalculator(
     }
 
     private fun calculateFreshSession(entryAt: Instant, now: Instant): BillingQuote {
-        val freeEndsAt = entryAt.plus(FREE_DURATION)
-        val firstCycleEndsAt = entryAt.plus(BILLING_CYCLE)
+        val freeEndsAt = entryAt.plus(ruleConfig.freeDuration)
+        val firstCycleEndsAt = entryAt.plus(ruleConfig.billingCycle)
 
         if (now.isBefore(freeEndsAt)) {
             return BillingQuote(
@@ -57,7 +58,7 @@ class BillingCalculator(
 
         val completedCyclesAfterFirst = elapsedCycleCount(firstCycleEndsAt, now)
         val currentFeeYuan = BASE_FEE_YUAN * (2 + completedCyclesAfterFirst.toInt())
-        val nextChargeAt = firstCycleEndsAt.plus(BILLING_CYCLE.multipliedBy(completedCyclesAfterFirst + 1))
+        val nextChargeAt = firstCycleEndsAt.plus(ruleConfig.billingCycle.multipliedBy(completedCyclesAfterFirst + 1))
         val nextFeeYuan = currentFeeYuan + BASE_FEE_YUAN
 
         return BillingQuote(
@@ -89,7 +90,7 @@ class BillingCalculator(
 
         val completedCycles = elapsedCycleCount(coverageWindow.endAt, now)
         val currentFeeYuan = BASE_FEE_YUAN * (1 + completedCycles.toInt())
-        val nextChargeAt = coverageWindow.endAt.plus(BILLING_CYCLE.multipliedBy(completedCycles + 1))
+        val nextChargeAt = coverageWindow.endAt.plus(ruleConfig.billingCycle.multipliedBy(completedCycles + 1))
         val nextFeeYuan = currentFeeYuan + BASE_FEE_YUAN
 
         return BillingQuote(
@@ -108,12 +109,10 @@ class BillingCalculator(
 
     private fun elapsedCycleCount(anchor: Instant, now: Instant): Long {
         if (now.isBefore(anchor)) return 0
-        return Duration.between(anchor, now).toMillis() / BILLING_CYCLE.toMillis()
+        return Duration.between(anchor, now).toMillis() / ruleConfig.billingCycle.toMillis()
     }
 
     private companion object {
         const val BASE_FEE_YUAN = 5
-        val FREE_DURATION: Duration = Duration.ofHours(1)
-        val BILLING_CYCLE: Duration = Duration.ofHours(12)
     }
 }

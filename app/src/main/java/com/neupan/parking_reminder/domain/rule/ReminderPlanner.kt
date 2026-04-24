@@ -8,7 +8,9 @@ import com.neupan.parking_reminder.domain.model.ReminderType
 import java.time.Duration
 import java.time.Instant
 
-class ReminderPlanner {
+class ReminderPlanner(
+    private val ruleConfig: ParkingRuleConfig = ParkingRuleConfig.Production,
+) {
     fun planNextReminder(
         session: ParkingSession,
         quote: BillingQuote,
@@ -35,7 +37,7 @@ class ReminderPlanner {
         session: ParkingSession,
         now: Instant,
     ): ReminderPlan {
-        val freeEndingReminderAt = session.entryAt.plus(FREE_DURATION).minus(REMINDER_LEAD_TIME)
+        val freeEndingReminderAt = session.entryAt.plus(ruleConfig.freeDuration).minus(ruleConfig.reminderLeadTime)
         if (freeEndingReminderAt.isAfter(now)) {
             return ReminderPlan(
                 sessionId = session.id,
@@ -47,7 +49,7 @@ class ReminderPlanner {
 
         return planCycleReminder(
             sessionId = session.id,
-            firstBoundaryAt = session.entryAt.plus(BILLING_CYCLE),
+            firstBoundaryAt = session.entryAt.plus(ruleConfig.billingCycle),
             firstTargetFeeYuan = BASE_FEE_YUAN * 2,
             now = now,
         )
@@ -58,7 +60,7 @@ class ReminderPlanner {
         coverageEndAt: Instant,
         now: Instant,
     ): ReminderPlan {
-        val coverageEndingReminderAt = coverageEndAt.minus(REMINDER_LEAD_TIME)
+        val coverageEndingReminderAt = coverageEndAt.minus(ruleConfig.reminderLeadTime)
         if (coverageEndingReminderAt.isAfter(now)) {
             return ReminderPlan(
                 sessionId = session.id,
@@ -78,7 +80,7 @@ class ReminderPlanner {
     ): ReminderPlan {
         return planCycleReminder(
             sessionId = session.id,
-            firstBoundaryAt = coverageEndAt.plus(BILLING_CYCLE),
+            firstBoundaryAt = coverageEndAt.plus(ruleConfig.billingCycle),
             firstTargetFeeYuan = BASE_FEE_YUAN * 2,
             now = now,
         )
@@ -90,13 +92,13 @@ class ReminderPlanner {
         firstTargetFeeYuan: Int,
         now: Instant,
     ): ReminderPlan {
-        val firstReminderAt = firstBoundaryAt.minus(REMINDER_LEAD_TIME)
+        val firstReminderAt = firstBoundaryAt.minus(ruleConfig.reminderLeadTime)
         val cycleOffset = if (firstReminderAt.isAfter(now)) {
             0
         } else {
-            Duration.between(firstReminderAt, now).toMillis() / BILLING_CYCLE.toMillis() + 1
+            Duration.between(firstReminderAt, now).toMillis() / ruleConfig.billingCycle.toMillis() + 1
         }
-        val triggerAt = firstReminderAt.plus(BILLING_CYCLE.multipliedBy(cycleOffset))
+        val triggerAt = firstReminderAt.plus(ruleConfig.billingCycle.multipliedBy(cycleOffset))
         val targetFeeYuan = firstTargetFeeYuan + (BASE_FEE_YUAN * cycleOffset.toInt())
 
         return ReminderPlan(
@@ -109,8 +111,5 @@ class ReminderPlanner {
 
     private companion object {
         const val BASE_FEE_YUAN = 5
-        val FREE_DURATION: Duration = Duration.ofHours(1)
-        val BILLING_CYCLE: Duration = Duration.ofHours(12)
-        val REMINDER_LEAD_TIME: Duration = Duration.ofMinutes(10)
     }
 }

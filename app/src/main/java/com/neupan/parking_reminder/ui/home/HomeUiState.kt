@@ -6,6 +6,8 @@ data class HomeUiState(
     val currentFeeYuan: Int = 0,
     val primaryText: String = "",
     val secondaryText: String = "",
+    val reminderPolicyText: String = "下一次加费前 10 分钟提醒",
+    val ruleModeText: String? = null,
     val entryAtText: String? = null,
     val nextChangeAtText: String? = null,
     val countdownText: String? = null,

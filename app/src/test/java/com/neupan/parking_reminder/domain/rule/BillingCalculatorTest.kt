@@ -42,6 +42,22 @@ class BillingCalculatorTest {
     }
 
     @Test
+    fun `debug fast rules charge after two minutes`() {
+        val debugCalculator = BillingCalculator(ParkingRuleConfig.DebugFast)
+
+        val quote = debugCalculator.calculate(
+            session = session(),
+            matchedCoverageWindow = null,
+            now = entryAt.plus(Duration.ofMinutes(2)),
+        )
+
+        assertEquals(5, quote.currentFeeYuan)
+        assertEquals(entryAt.plus(Duration.ofMinutes(5)), quote.nextChargeAt)
+        assertEquals(10, quote.nextFeeYuan)
+        assertTrue(quote.status is ParkingStatus.ParkingCharged)
+    }
+
+    @Test
     fun `fresh parking remains five yuan before twelve hours`() {
         val quote = calculator.calculate(
             session = session(),

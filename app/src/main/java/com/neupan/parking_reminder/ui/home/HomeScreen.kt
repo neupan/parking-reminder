@@ -79,7 +79,10 @@ private fun HomeScreenContent(
                     .padding(horizontal = 20.dp, vertical = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Header()
+                Header(
+                    reminderPolicyText = uiState.reminderPolicyText,
+                    ruleModeText = uiState.ruleModeText,
+                )
 
                 StatusPanel(uiState)
 
@@ -99,9 +102,12 @@ private fun HomeScreenContent(
 }
 
 @Composable
-private fun Header() {
+private fun Header(
+    reminderPolicyText: String,
+    ruleModeText: String?,
+) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
             text = "停车缴费提醒",
@@ -110,10 +116,24 @@ private fun Header() {
             fontWeight = FontWeight.Bold,
         )
         Text(
-            text = "下一次加费前 10 分钟提醒",
+            text = reminderPolicyText,
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White.copy(alpha = 0.7f),
         )
+        if (ruleModeText != null) {
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = WarningColor.copy(alpha = 0.16f),
+                contentColor = WarningColor,
+            ) {
+                Text(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    text = ruleModeText,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
     }
 }
 

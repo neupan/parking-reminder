@@ -13,6 +13,7 @@ import com.neupan.parking_reminder.domain.repository.ParkingRepository
 import com.neupan.parking_reminder.domain.repository.ReminderScheduleState
 import com.neupan.parking_reminder.domain.repository.ReminderScheduleStatus
 import com.neupan.parking_reminder.domain.repository.ReminderStateRepository
+import com.neupan.parking_reminder.domain.rule.ParkingRuleConfig
 import com.neupan.parking_reminder.domain.rule.ParkingStateResolver
 import com.neupan.parking_reminder.domain.service.ParkingCommandService
 import com.neupan.parking_reminder.domain.time.AppClock
@@ -37,6 +38,7 @@ class HomeViewModel(
     private val parkingCommandService: ParkingCommandService,
     private val reminderResyncService: ReminderResyncService,
     private val parkingStateResolver: ParkingStateResolver,
+    private val ruleConfig: ParkingRuleConfig,
     private val clock: AppClock,
 ) : ViewModel() {
     private val nowFlow = flow {
@@ -58,7 +60,16 @@ class HomeViewModel(
         )
     }
         .map { buildUiState(it.now, it.session, it.reminderState) }
-        .catch { emit(HomeUiState(isLoading = false, errorMessage = it.message)) }
+        .catch {
+            emit(
+                HomeUiState(
+                    isLoading = false,
+                    reminderPolicyText = reminderPolicyText(),
+                    ruleModeText = ruleModeText(),
+                    errorMessage = it.message,
+                ),
+            )
+        }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -94,6 +105,8 @@ class HomeViewModel(
                 mode = HomeMode.Idle,
                 primaryText = "还未开始泊车",
                 secondaryText = "到车库后点一下开始，提醒会自动安排",
+                reminderPolicyText = reminderPolicyText(),
+                ruleModeText = ruleModeText(),
                 reminderHealth = reminderState.toReminderHealthUiState(),
                 canStartParking = true,
                 canCheckout = false,
@@ -134,6 +147,8 @@ class HomeViewModel(
             currentFeeYuan = currentFeeYuan,
             primaryText = primaryText(),
             secondaryText = secondaryText(),
+            reminderPolicyText = reminderPolicyText(),
+            ruleModeText = ruleModeText(),
             entryAtText = "入库 ${session.entryAt.formatTime()}",
             nextChangeAtText = nextChangeAt?.let { "下次变化 ${it.formatTime()}" },
             countdownText = remaining?.formatDuration(),
@@ -163,7 +178,7 @@ class HomeViewModel(
     private fun BillingQuote.secondaryText(): String {
         return when (val currentStatus = status) {
             ParkingStatus.Idle -> "到车库后点一下开始"
-            is ParkingStatus.ParkingFree -> "1 小时免费期内"
+            is ParkingStatus.ParkingFree -> "${ruleConfig.freeDuration.formatHumanDuration()}免费期内"
             is ParkingStatus.ParkingCharged -> "下次将加费到 ${currentStatus.nextFeeYuan} 元"
             is ParkingStatus.ParkingCovered -> "覆盖到 ${currentStatus.coverageWindow.endAt.formatTime()}"
             is ParkingStatus.PostCoverageCharged -> "下次将加费到 ${currentStatus.nextFeeYuan} 元"
@@ -191,7 +206,7 @@ class HomeViewModel(
             is ParkingStatus.ParkingCharged -> chargedInterval(session.entryAt, status.nextChargeAt)
             is ParkingStatus.ParkingCovered -> session.entryAt to status.coverageWindow.endAt
             is ParkingStatus.PostCoverageCharged -> {
-                status.nextChargeAt.minus(Duration.ofHours(12)) to status.nextChargeAt
+                status.nextChargeAt.minus(ruleConfig.billingCycle) to status.nextChargeAt
             }
         }
         val total = Duration.between(interval.first, interval.second).toMillis().coerceAtLeast(1)
@@ -200,11 +215,11 @@ class HomeViewModel(
     }
 
     private fun chargedInterval(entryAt: Instant, nextChargeAt: Instant): Pair<Instant, Instant> {
-        val firstCycleEnd = entryAt.plus(Duration.ofHours(12))
+        val firstCycleEnd = entryAt.plus(ruleConfig.billingCycle)
         return if (nextChargeAt == firstCycleEnd) {
-            entryAt.plus(Duration.ofHours(1)) to firstCycleEnd
+            entryAt.plus(ruleConfig.freeDuration) to firstCycleEnd
         } else {
-            nextChargeAt.minus(Duration.ofHours(12)) to nextChargeAt
+            nextChargeAt.minus(ruleConfig.billingCycle) to nextChargeAt
         }
     }
 
@@ -241,9 +256,11 @@ class HomeViewModel(
 
     private fun Duration?.toUrgencyLevel(): UrgencyLevel {
         if (this == null) return UrgencyLevel.SAFE
+        val urgentThreshold = ruleConfig.reminderLeadTime
+        val warningThreshold = ruleConfig.reminderLeadTime.multipliedBy(3)
         return when {
-            this <= Duration.ofMinutes(10) -> UrgencyLevel.URGENT
-            this <= Duration.ofMinutes(30) -> UrgencyLevel.WARNING
+            this <= urgentThreshold -> UrgencyLevel.URGENT
+            this <= warningThreshold -> UrgencyLevel.WARNING
             else -> UrgencyLevel.SAFE
         }
     }
@@ -261,6 +278,32 @@ class HomeViewModel(
             String.format(Locale.CHINA, "%d:%02d:%02d", hours, minutes, secs)
         } else {
             String.format(Locale.CHINA, "%02d:%02d", minutes, secs)
+        }
+    }
+
+    private fun reminderPolicyText(): String {
+        return "下一次加费前 ${ruleConfig.reminderLeadTime.formatHumanDuration()}提醒"
+    }
+
+    private fun ruleModeText(): String? {
+        if (!ruleConfig.isTestMode) return null
+        return "测试模式：${ruleConfig.reminderLeadTime.formatHumanDuration()}提醒，" +
+            "${ruleConfig.freeDuration.formatHumanDuration()}开始计费，" +
+            "${ruleConfig.billingCycle.formatHumanDuration()}一轮"
+    }
+
+    private fun Duration.formatHumanDuration(): String {
+        val totalSeconds = seconds.coerceAtLeast(0)
+        val hours = totalSeconds / 3_600
+        val minutes = (totalSeconds % 3_600) / 60
+        val secs = totalSeconds % 60
+
+        return when {
+            hours > 0 && minutes > 0 -> "${hours} 小时 ${minutes} 分钟"
+            hours > 0 -> "${hours} 小时"
+            minutes > 0 && secs > 0 -> "${minutes} 分钟 ${secs} 秒"
+            minutes > 0 -> "${minutes} 分钟"
+            else -> "${secs} 秒"
         }
     }
 
@@ -285,6 +328,7 @@ class HomeViewModel(
                 parkingCommandService = appContainer.parkingCommandService,
                 reminderResyncService = appContainer.reminderResyncService,
                 parkingStateResolver = appContainer.parkingStateResolver,
+                ruleConfig = appContainer.ruleConfig,
                 clock = appContainer.clock,
             ) as T
         }

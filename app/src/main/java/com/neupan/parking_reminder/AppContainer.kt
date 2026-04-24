@@ -11,7 +11,10 @@ import com.neupan.parking_reminder.data.repository.RoomParkingRepository
 import com.neupan.parking_reminder.data.repository.RoomReminderStateRepository
 import com.neupan.parking_reminder.domain.repository.ParkingRepository
 import com.neupan.parking_reminder.domain.repository.ReminderStateRepository
+import com.neupan.parking_reminder.domain.rule.BillingCalculator
 import com.neupan.parking_reminder.domain.rule.ParkingStateResolver
+import com.neupan.parking_reminder.domain.rule.ParkingRuleConfig
+import com.neupan.parking_reminder.domain.rule.ReminderPlanner
 import com.neupan.parking_reminder.domain.service.ParkingCommandService
 import com.neupan.parking_reminder.domain.time.AppClock
 import com.neupan.parking_reminder.domain.time.SystemAppClock
@@ -27,13 +30,30 @@ class AppContainer(context: Context) {
 
     val clock: AppClock = SystemAppClock()
 
-    val parkingRepository: ParkingRepository = RoomParkingRepository(database)
+    val ruleConfig: ParkingRuleConfig = if (BuildConfig.DEBUG) {
+        ParkingRuleConfig.DebugFast
+    } else {
+        ParkingRuleConfig.Production
+    }
+
+    private val billingCalculator = BillingCalculator(ruleConfig)
+
+    private val reminderPlanner = ReminderPlanner(ruleConfig)
+
+    val parkingRepository: ParkingRepository = RoomParkingRepository(
+        database = database,
+        ruleConfig = ruleConfig,
+        billingCalculator = billingCalculator,
+    )
 
     val reminderStateRepository: ReminderStateRepository = RoomReminderStateRepository(
         database.reminderScheduleStateDao(),
     )
 
-    val parkingStateResolver = ParkingStateResolver()
+    val parkingStateResolver = ParkingStateResolver(
+        billingCalculator = billingCalculator,
+        reminderPlanner = reminderPlanner,
+    )
 
     private val reminderScheduler = ReminderAlarmScheduler(
         context = appContext,
