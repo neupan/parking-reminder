@@ -30,7 +30,7 @@ class ReminderPlannerTest {
     }
 
     @Test
-    fun `debug fast rules schedule first reminder after one minute`() {
+    fun `debug fast rules schedule first reminder after ten seconds`() {
         val debugCalculator = BillingCalculator(ParkingRuleConfig.DebugFast)
         val debugPlanner = ReminderPlanner(ParkingRuleConfig.DebugFast)
         val session = session()
@@ -43,7 +43,7 @@ class ReminderPlannerTest {
         )
 
         assertEquals(ReminderType.FREE_ENDING, plan?.reminderType)
-        assertEquals(entryAt.plus(Duration.ofMinutes(1)), plan?.triggerAt)
+        assertEquals(entryAt.plus(Duration.ofSeconds(10)), plan?.triggerAt)
         assertEquals(5, plan?.targetFeeYuan)
     }
 
