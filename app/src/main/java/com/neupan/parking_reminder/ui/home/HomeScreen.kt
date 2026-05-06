@@ -53,6 +53,7 @@ fun HomeScreen(
         onStartParking = viewModel::onStartParkingClicked,
         onCheckout = viewModel::onCheckoutClicked,
         onStopAlarm = viewModel::onStopAlarmClicked,
+        onToggleRuleMode = viewModel::onToggleRuleModeClicked,
         onOpenExactAlarmSettings = onOpenExactAlarmSettings,
         onPickRingtone = onPickRingtone,
         alarmRingtoneTitle = alarmRingtoneTitle,
@@ -66,6 +67,7 @@ private fun HomeScreenContent(
     onStartParking: () -> Unit,
     onCheckout: () -> Unit,
     onStopAlarm: () -> Unit,
+    onToggleRuleMode: () -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onPickRingtone: () -> Unit,
     alarmRingtoneTitle: String,
@@ -110,6 +112,11 @@ private fun HomeScreenContent(
                 ReminderPanel(
                     reminderHealth = uiState.reminderHealth,
                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                )
+
+                RuleModePanel(
+                    uiState = uiState,
+                    onToggleRuleMode = onToggleRuleMode,
                 )
 
                 RingtonePickerRow(
@@ -386,6 +393,52 @@ private fun StopAlarmBanner(onStopAlarm: () -> Unit) {
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleMedium,
         )
+    }
+}
+
+@Composable
+private fun RuleModePanel(
+    uiState: HomeUiState,
+    onToggleRuleMode: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = PanelColor.copy(alpha = 0.84f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = uiState.ruleModeTitle,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = uiState.ruleModeDescription,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.64f),
+                )
+            }
+            OutlinedButton(
+                shape = RoundedCornerShape(8.dp),
+                onClick = onToggleRuleMode,
+            ) {
+                Text(
+                    text = uiState.ruleModeSwitchText,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
     }
 }
 

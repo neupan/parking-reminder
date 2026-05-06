@@ -9,26 +9,31 @@ import java.time.Duration
 import java.time.Instant
 
 class ReminderPlanner(
-    private val ruleConfig: ParkingRuleConfig = ParkingRuleConfig.Production,
+    private val ruleConfigProvider: ParkingRuleConfigProvider = FixedParkingRuleConfigProvider(),
 ) {
+    constructor(ruleConfig: ParkingRuleConfig) : this(FixedParkingRuleConfigProvider(ruleConfig))
+
     fun planNextReminder(
         session: ParkingSession,
         quote: BillingQuote,
         now: Instant,
     ): ReminderPlan? {
+        val ruleConfig = ruleConfigProvider.current
         return when (val status = quote.status) {
             ParkingStatus.Idle -> null
             is ParkingStatus.ParkingFree,
-            is ParkingStatus.ParkingCharged -> planFreshSessionReminder(session, now)
+            is ParkingStatus.ParkingCharged -> planFreshSessionReminder(session, now, ruleConfig)
             is ParkingStatus.ParkingCovered -> planCoveredSessionReminder(
                 session = session,
                 coverageEndAt = status.coverageWindow.endAt,
                 now = now,
+                ruleConfig = ruleConfig,
             )
             is ParkingStatus.PostCoverageCharged -> planPostCoverageReminder(
                 session = session,
                 coverageEndAt = status.coverageWindow.endAt,
                 now = now,
+                ruleConfig = ruleConfig,
             )
         }
     }
@@ -36,6 +41,7 @@ class ReminderPlanner(
     private fun planFreshSessionReminder(
         session: ParkingSession,
         now: Instant,
+        ruleConfig: ParkingRuleConfig,
     ): ReminderPlan {
         val freeEndingReminderAt = session.entryAt.plus(ruleConfig.freeDuration).minus(ruleConfig.reminderLeadTime)
         if (freeEndingReminderAt.isAfter(now)) {
@@ -52,6 +58,7 @@ class ReminderPlanner(
             firstBoundaryAt = session.entryAt.plus(ruleConfig.billingCycle),
             firstTargetFeeYuan = BASE_FEE_YUAN * 2,
             now = now,
+            ruleConfig = ruleConfig,
         )
     }
 
@@ -59,6 +66,7 @@ class ReminderPlanner(
         session: ParkingSession,
         coverageEndAt: Instant,
         now: Instant,
+        ruleConfig: ParkingRuleConfig,
     ): ReminderPlan {
         val coverageEndingReminderAt = coverageEndAt.minus(ruleConfig.reminderLeadTime)
         if (coverageEndingReminderAt.isAfter(now)) {
@@ -70,19 +78,21 @@ class ReminderPlanner(
             )
         }
 
-        return planPostCoverageReminder(session, coverageEndAt, now)
+        return planPostCoverageReminder(session, coverageEndAt, now, ruleConfig)
     }
 
     private fun planPostCoverageReminder(
         session: ParkingSession,
         coverageEndAt: Instant,
         now: Instant,
+        ruleConfig: ParkingRuleConfig,
     ): ReminderPlan {
         return planCycleReminder(
             sessionId = session.id,
             firstBoundaryAt = coverageEndAt.plus(ruleConfig.billingCycle),
             firstTargetFeeYuan = BASE_FEE_YUAN * 2,
             now = now,
+            ruleConfig = ruleConfig,
         )
     }
 
@@ -91,6 +101,7 @@ class ReminderPlanner(
         firstBoundaryAt: Instant,
         firstTargetFeeYuan: Int,
         now: Instant,
+        ruleConfig: ParkingRuleConfig,
     ): ReminderPlan {
         val firstReminderAt = firstBoundaryAt.minus(ruleConfig.reminderLeadTime)
         val cycleOffset = if (firstReminderAt.isAfter(now)) {

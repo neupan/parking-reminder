@@ -8,13 +8,14 @@ import com.neupan.parking_reminder.alarm.ReminderAlarmScheduler
 import com.neupan.parking_reminder.alarm.ReminderResyncService
 import com.neupan.parking_reminder.alarm.RingtonePreferences
 import com.neupan.parking_reminder.data.AppDatabase
+import com.neupan.parking_reminder.data.ParkingRuleConfigStore
 import com.neupan.parking_reminder.data.repository.RoomParkingRepository
 import com.neupan.parking_reminder.data.repository.RoomReminderStateRepository
 import com.neupan.parking_reminder.domain.repository.ParkingRepository
 import com.neupan.parking_reminder.domain.repository.ReminderStateRepository
 import com.neupan.parking_reminder.domain.rule.BillingCalculator
 import com.neupan.parking_reminder.domain.rule.ParkingStateResolver
-import com.neupan.parking_reminder.domain.rule.ParkingRuleConfig
+import com.neupan.parking_reminder.domain.rule.ParkingRuleMode
 import com.neupan.parking_reminder.domain.rule.ReminderPlanner
 import com.neupan.parking_reminder.domain.service.ParkingCommandService
 import com.neupan.parking_reminder.domain.time.AppClock
@@ -31,19 +32,22 @@ class AppContainer(context: Context) {
 
     val clock: AppClock = SystemAppClock()
 
-    val ruleConfig: ParkingRuleConfig = if (BuildConfig.DEBUG) {
-        ParkingRuleConfig.DebugFast
-    } else {
-        ParkingRuleConfig.Production
-    }
+    val ruleConfigStore = ParkingRuleConfigStore(
+        context = appContext,
+        defaultMode = if (BuildConfig.DEBUG) {
+            ParkingRuleMode.DEBUG_FAST
+        } else {
+            ParkingRuleMode.PRODUCTION
+        },
+    )
 
-    private val billingCalculator = BillingCalculator(ruleConfig)
+    private val billingCalculator = BillingCalculator(ruleConfigStore)
 
-    private val reminderPlanner = ReminderPlanner(ruleConfig)
+    private val reminderPlanner = ReminderPlanner(ruleConfigStore)
 
     val parkingRepository: ParkingRepository = RoomParkingRepository(
         database = database,
-        ruleConfig = ruleConfig,
+        ruleConfigProvider = ruleConfigStore,
         billingCalculator = billingCalculator,
     )
 

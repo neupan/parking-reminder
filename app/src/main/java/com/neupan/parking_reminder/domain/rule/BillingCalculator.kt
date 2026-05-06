@@ -9,26 +9,36 @@ import java.time.Duration
 import java.time.Instant
 
 class BillingCalculator(
-    private val ruleConfig: ParkingRuleConfig = ParkingRuleConfig.Production,
+    private val ruleConfigProvider: ParkingRuleConfigProvider = FixedParkingRuleConfigProvider(),
     private val coverageMatcher: CoverageMatcher = CoverageMatcher(),
 ) {
+    constructor(
+        ruleConfig: ParkingRuleConfig,
+        coverageMatcher: CoverageMatcher = CoverageMatcher(),
+    ) : this(FixedParkingRuleConfigProvider(ruleConfig), coverageMatcher)
+
     fun calculate(
         session: ParkingSession,
         matchedCoverageWindow: CoverageWindow?,
         now: Instant,
     ): BillingQuote {
+        val ruleConfig = ruleConfigProvider.current
         val coverageWindow = matchedCoverageWindow?.takeIf {
             coverageMatcher.isCovered(session.entryAt, it)
         }
 
         return if (coverageWindow != null) {
-            calculateCoveredSession(coverageWindow, now)
+            calculateCoveredSession(coverageWindow, now, ruleConfig)
         } else {
-            calculateFreshSession(session.entryAt, now)
+            calculateFreshSession(session.entryAt, now, ruleConfig)
         }
     }
 
-    private fun calculateFreshSession(entryAt: Instant, now: Instant): BillingQuote {
+    private fun calculateFreshSession(
+        entryAt: Instant,
+        now: Instant,
+        ruleConfig: ParkingRuleConfig,
+    ): BillingQuote {
         val freeEndsAt = entryAt.plus(ruleConfig.freeDuration)
         val firstCycleEndsAt = entryAt.plus(ruleConfig.billingCycle)
 
@@ -56,7 +66,7 @@ class BillingCalculator(
             )
         }
 
-        val completedCyclesAfterFirst = elapsedCycleCount(firstCycleEndsAt, now)
+        val completedCyclesAfterFirst = elapsedCycleCount(firstCycleEndsAt, now, ruleConfig)
         val currentFeeYuan = BASE_FEE_YUAN * (2 + completedCyclesAfterFirst.toInt())
         val nextChargeAt = firstCycleEndsAt.plus(ruleConfig.billingCycle.multipliedBy(completedCyclesAfterFirst + 1))
         val nextFeeYuan = currentFeeYuan + BASE_FEE_YUAN
@@ -77,6 +87,7 @@ class BillingCalculator(
     private fun calculateCoveredSession(
         coverageWindow: CoverageWindow,
         now: Instant,
+        ruleConfig: ParkingRuleConfig,
     ): BillingQuote {
         if (now.isBefore(coverageWindow.endAt)) {
             return BillingQuote(
@@ -88,7 +99,7 @@ class BillingCalculator(
             )
         }
 
-        val completedCycles = elapsedCycleCount(coverageWindow.endAt, now)
+        val completedCycles = elapsedCycleCount(coverageWindow.endAt, now, ruleConfig)
         val currentFeeYuan = BASE_FEE_YUAN * (1 + completedCycles.toInt())
         val nextChargeAt = coverageWindow.endAt.plus(ruleConfig.billingCycle.multipliedBy(completedCycles + 1))
         val nextFeeYuan = currentFeeYuan + BASE_FEE_YUAN
@@ -107,7 +118,11 @@ class BillingCalculator(
         )
     }
 
-    private fun elapsedCycleCount(anchor: Instant, now: Instant): Long {
+    private fun elapsedCycleCount(
+        anchor: Instant,
+        now: Instant,
+        ruleConfig: ParkingRuleConfig,
+    ): Long {
         if (now.isBefore(anchor)) return 0
         return Duration.between(anchor, now).toMillis() / ruleConfig.billingCycle.toMillis()
     }

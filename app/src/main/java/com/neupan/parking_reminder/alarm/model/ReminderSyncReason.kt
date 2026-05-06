@@ -11,4 +11,5 @@ enum class ReminderSyncReason {
     TIME_CHANGED,
     TIMEZONE_CHANGED,
     EXACT_ALARM_PERMISSION_CHANGED,
+    RULE_MODE_CHANGED,
 }

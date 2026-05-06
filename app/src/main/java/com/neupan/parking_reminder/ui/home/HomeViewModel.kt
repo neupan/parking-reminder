@@ -7,6 +7,7 @@ import com.neupan.parking_reminder.AppContainer
 import com.neupan.parking_reminder.alarm.ReminderNotifier
 import com.neupan.parking_reminder.alarm.ReminderResyncService
 import com.neupan.parking_reminder.alarm.model.ReminderSyncReason
+import com.neupan.parking_reminder.data.ParkingRuleConfigStore
 import com.neupan.parking_reminder.domain.model.BillingQuote
 import com.neupan.parking_reminder.domain.model.ParkingSession
 import com.neupan.parking_reminder.domain.model.ParkingStatus
@@ -15,6 +16,7 @@ import com.neupan.parking_reminder.domain.repository.ReminderScheduleState
 import com.neupan.parking_reminder.domain.repository.ReminderScheduleStatus
 import com.neupan.parking_reminder.domain.repository.ReminderStateRepository
 import com.neupan.parking_reminder.domain.rule.ParkingRuleConfig
+import com.neupan.parking_reminder.domain.rule.ParkingRuleMode
 import com.neupan.parking_reminder.domain.rule.ParkingStateResolver
 import com.neupan.parking_reminder.domain.service.ParkingCommandService
 import com.neupan.parking_reminder.domain.time.AppClock
@@ -43,7 +45,7 @@ class HomeViewModel(
     private val reminderResyncService: ReminderResyncService,
     private val reminderNotifier: ReminderNotifier,
     private val parkingStateResolver: ParkingStateResolver,
-    private val ruleConfig: ParkingRuleConfig,
+    private val ruleConfigStore: ParkingRuleConfigStore,
     private val clock: AppClock,
 ) : ViewModel() {
     private val nowFlow = flow {
@@ -57,20 +59,26 @@ class HomeViewModel(
         nowFlow,
         parkingRepository.observeActiveSession(),
         reminderStateRepository.observeScheduleState(),
-    ) { now, session, reminderState ->
+        ruleConfigStore.modeFlow,
+    ) { now, session, reminderState, ruleMode ->
         UiInputs(
             now = now,
             session = session,
             reminderState = reminderState,
+            ruleConfig = ruleMode.config,
         )
     }
-        .map { buildUiState(it.now, it.session, it.reminderState) }
+        .map { buildUiState(it.now, it.session, it.reminderState, it.ruleConfig) }
         .catch {
+            val ruleConfig = ruleConfigStore.current
             emit(
                 HomeUiState(
                     isLoading = false,
-                    reminderPolicyText = reminderPolicyText(),
-                    ruleModeText = ruleModeText(),
+                    reminderPolicyText = reminderPolicyText(ruleConfig),
+                    ruleModeText = ruleModeText(ruleConfig),
+                    ruleModeTitle = ruleConfigStore.currentMode.displayName,
+                    ruleModeDescription = ruleModeDescription(ruleConfig),
+                    ruleModeSwitchText = ruleModeSwitchText(ruleConfigStore.currentMode),
                     errorMessage = it.message,
                 ),
             )
@@ -110,10 +118,23 @@ class HomeViewModel(
         reminderNotifier.stopAlarmSound()
     }
 
+    fun onToggleRuleModeClicked() {
+        val nextMode = when (ruleConfigStore.currentMode) {
+            ParkingRuleMode.PRODUCTION -> ParkingRuleMode.DEBUG_FAST
+            ParkingRuleMode.DEBUG_FAST -> ParkingRuleMode.PRODUCTION
+        }
+        Log.d(TAG, "onToggleRuleModeClicked() nextMode=$nextMode")
+        ruleConfigStore.setMode(nextMode)
+        viewModelScope.launch {
+            reminderResyncService.resync(ReminderSyncReason.RULE_MODE_CHANGED)
+        }
+    }
+
     private suspend fun buildUiState(
         now: Instant,
         session: ParkingSession?,
         reminderState: ReminderScheduleState?,
+        ruleConfig: ParkingRuleConfig,
     ): HomeUiState {
         if (session == null) {
             return HomeUiState(
@@ -121,8 +142,11 @@ class HomeViewModel(
                 mode = HomeMode.Idle,
                 primaryText = "还未开始泊车",
                 secondaryText = "到车库后点一下开始，提醒会自动安排",
-                reminderPolicyText = reminderPolicyText(),
-                ruleModeText = ruleModeText(),
+                reminderPolicyText = reminderPolicyText(ruleConfig),
+                ruleModeText = ruleModeText(ruleConfig),
+                ruleModeTitle = ruleConfigStore.currentMode.displayName,
+                ruleModeDescription = ruleModeDescription(ruleConfig),
+                ruleModeSwitchText = ruleModeSwitchText(ruleConfigStore.currentMode),
                 reminderHealth = reminderState.toReminderHealthUiState(),
                 canStartParking = true,
                 canCheckout = false,
@@ -145,6 +169,7 @@ class HomeViewModel(
             now = now,
             session = session,
             reminderState = reminderState,
+            ruleConfig = ruleConfig,
         )
     }
 
@@ -152,6 +177,7 @@ class HomeViewModel(
         now: Instant,
         session: ParkingSession,
         reminderState: ReminderScheduleState?,
+        ruleConfig: ParkingRuleConfig,
     ): HomeUiState {
         val nextChangeAt = nextChargeAt
         val remaining = nextChangeAt?.let { Duration.between(now, it).coerceAtLeast(Duration.ZERO) }
@@ -162,9 +188,12 @@ class HomeViewModel(
             mode = mode,
             currentFeeYuan = currentFeeYuan,
             primaryText = primaryText(),
-            secondaryText = secondaryText(),
-            reminderPolicyText = reminderPolicyText(),
-            ruleModeText = ruleModeText(),
+            secondaryText = secondaryText(ruleConfig),
+            reminderPolicyText = reminderPolicyText(ruleConfig),
+            ruleModeText = ruleModeText(ruleConfig),
+            ruleModeTitle = ruleConfigStore.currentMode.displayName,
+            ruleModeDescription = ruleModeDescription(ruleConfig),
+            ruleModeSwitchText = ruleModeSwitchText(ruleConfigStore.currentMode),
             entryAtText = "入库 ${session.entryAt.formatTime()}",
             nextChangeAtText = nextChangeAt?.let { "下次变化 ${it.formatTime()}" },
             countdownText = remaining?.formatDuration(),
@@ -172,8 +201,9 @@ class HomeViewModel(
                 status = status,
                 session = session,
                 now = now,
+                ruleConfig = ruleConfig,
             ),
-            urgency = remaining.toUrgencyLevel(),
+            urgency = remaining.toUrgencyLevel(ruleConfig),
             reminderHealth = reminderState.toReminderHealthUiState(),
             canStartParking = false,
             canCheckout = true,
@@ -191,7 +221,7 @@ class HomeViewModel(
         }
     }
 
-    private fun BillingQuote.secondaryText(): String {
+    private fun BillingQuote.secondaryText(ruleConfig: ParkingRuleConfig): String {
         return when (val currentStatus = status) {
             ParkingStatus.Idle -> "到车库后点一下开始"
             is ParkingStatus.ParkingFree -> "${ruleConfig.freeDuration.formatHumanDuration()}免费期内"
@@ -215,11 +245,16 @@ class HomeViewModel(
         status: ParkingStatus,
         session: ParkingSession,
         now: Instant,
+        ruleConfig: ParkingRuleConfig,
     ): Float {
         val interval = when (status) {
             ParkingStatus.Idle -> return 0f
             is ParkingStatus.ParkingFree -> session.entryAt to status.freeEndsAt
-            is ParkingStatus.ParkingCharged -> chargedInterval(session.entryAt, status.nextChargeAt)
+            is ParkingStatus.ParkingCharged -> chargedInterval(
+                entryAt = session.entryAt,
+                nextChargeAt = status.nextChargeAt,
+                ruleConfig = ruleConfig,
+            )
             is ParkingStatus.ParkingCovered -> session.entryAt to status.coverageWindow.endAt
             is ParkingStatus.PostCoverageCharged -> {
                 status.nextChargeAt.minus(ruleConfig.billingCycle) to status.nextChargeAt
@@ -230,7 +265,11 @@ class HomeViewModel(
         return elapsed.toFloat() / total.toFloat()
     }
 
-    private fun chargedInterval(entryAt: Instant, nextChargeAt: Instant): Pair<Instant, Instant> {
+    private fun chargedInterval(
+        entryAt: Instant,
+        nextChargeAt: Instant,
+        ruleConfig: ParkingRuleConfig,
+    ): Pair<Instant, Instant> {
         val firstCycleEnd = entryAt.plus(ruleConfig.billingCycle)
         return if (nextChargeAt == firstCycleEnd) {
             entryAt.plus(ruleConfig.freeDuration) to firstCycleEnd
@@ -270,7 +309,7 @@ class HomeViewModel(
         }
     }
 
-    private fun Duration?.toUrgencyLevel(): UrgencyLevel {
+    private fun Duration?.toUrgencyLevel(ruleConfig: ParkingRuleConfig): UrgencyLevel {
         if (this == null) return UrgencyLevel.SAFE
         val urgentThreshold = ruleConfig.reminderLeadTime
         val warningThreshold = ruleConfig.reminderLeadTime.multipliedBy(3)
@@ -297,15 +336,28 @@ class HomeViewModel(
         }
     }
 
-    private fun reminderPolicyText(): String {
+    private fun reminderPolicyText(ruleConfig: ParkingRuleConfig): String {
         return "下一次加费前 ${ruleConfig.reminderLeadTime.formatHumanDuration()}提醒"
     }
 
-    private fun ruleModeText(): String? {
+    private fun ruleModeText(ruleConfig: ParkingRuleConfig): String? {
         if (!ruleConfig.isTestMode) return null
         return "测试模式：${ruleConfig.reminderLeadTime.formatHumanDuration()}提醒，" +
             "${ruleConfig.freeDuration.formatHumanDuration()}开始计费，" +
             "${ruleConfig.billingCycle.formatHumanDuration()}一轮"
+    }
+
+    private fun ruleModeDescription(ruleConfig: ParkingRuleConfig): String {
+        return "${ruleConfig.freeDuration.formatHumanDuration()}免费，" +
+            "${ruleConfig.billingCycle.formatHumanDuration()}一轮，" +
+            "提前 ${ruleConfig.reminderLeadTime.formatHumanDuration()}提醒"
+    }
+
+    private fun ruleModeSwitchText(mode: ParkingRuleMode): String {
+        return when (mode) {
+            ParkingRuleMode.PRODUCTION -> "切换到测试规则"
+            ParkingRuleMode.DEBUG_FAST -> "切换到正式规则"
+        }
     }
 
     private fun Duration.formatHumanDuration(): String {
@@ -331,6 +383,7 @@ class HomeViewModel(
         val now: Instant,
         val session: ParkingSession?,
         val reminderState: ReminderScheduleState?,
+        val ruleConfig: ParkingRuleConfig,
     )
 
     class Factory(
@@ -345,7 +398,7 @@ class HomeViewModel(
                 reminderResyncService = appContainer.reminderResyncService,
                 reminderNotifier = appContainer.reminderNotifier,
                 parkingStateResolver = appContainer.parkingStateResolver,
-                ruleConfig = appContainer.ruleConfig,
+                ruleConfigStore = appContainer.ruleConfigStore,
                 clock = appContainer.clock,
             ) as T
         }

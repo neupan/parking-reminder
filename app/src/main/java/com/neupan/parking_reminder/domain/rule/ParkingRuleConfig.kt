@@ -37,3 +37,40 @@ data class ParkingRuleConfig(
         )
     }
 }
+
+enum class ParkingRuleMode {
+    PRODUCTION,
+    DEBUG_FAST,
+    ;
+
+    val config: ParkingRuleConfig
+        get() = when (this) {
+            PRODUCTION -> ParkingRuleConfig.Production
+            DEBUG_FAST -> ParkingRuleConfig.DebugFast
+        }
+
+    val displayName: String
+        get() = when (this) {
+            PRODUCTION -> "正式规则"
+            DEBUG_FAST -> "测试规则"
+        }
+
+    companion object {
+        fun fromStoredName(value: String?): ParkingRuleMode? {
+            return entries.firstOrNull { it.name == value }
+        }
+    }
+}
+
+interface ParkingRuleConfigProvider {
+    val currentMode: ParkingRuleMode
+
+    val current: ParkingRuleConfig
+}
+
+class FixedParkingRuleConfigProvider(
+    override val current: ParkingRuleConfig = ParkingRuleConfig.Production,
+) : ParkingRuleConfigProvider {
+    override val currentMode: ParkingRuleMode
+        get() = if (current.isTestMode) ParkingRuleMode.DEBUG_FAST else ParkingRuleMode.PRODUCTION
+}

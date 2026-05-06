@@ -12,7 +12,9 @@ import com.neupan.parking_reminder.domain.repository.ParkingRepository
 import com.neupan.parking_reminder.domain.repository.StartParkingResult
 import com.neupan.parking_reminder.domain.repository.UpdateEntryTimeResult
 import com.neupan.parking_reminder.domain.rule.BillingCalculator
+import com.neupan.parking_reminder.domain.rule.FixedParkingRuleConfigProvider
 import com.neupan.parking_reminder.domain.rule.ParkingRuleConfig
+import com.neupan.parking_reminder.domain.rule.ParkingRuleConfigProvider
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -21,9 +23,15 @@ import kotlinx.coroutines.flow.map
 
 class RoomParkingRepository(
     private val database: AppDatabase,
-    private val ruleConfig: ParkingRuleConfig = ParkingRuleConfig.Production,
-    private val billingCalculator: BillingCalculator = BillingCalculator(ruleConfig),
+    private val ruleConfigProvider: ParkingRuleConfigProvider = FixedParkingRuleConfigProvider(),
+    private val billingCalculator: BillingCalculator = BillingCalculator(ruleConfigProvider),
 ) : ParkingRepository {
+    constructor(
+        database: AppDatabase,
+        ruleConfig: ParkingRuleConfig,
+        billingCalculator: BillingCalculator = BillingCalculator(ruleConfig),
+    ) : this(database, FixedParkingRuleConfigProvider(ruleConfig), billingCalculator)
+
     private val activeSessionDao = database.activeParkingSessionDao()
     private val coverageWindowDao = database.coverageWindowDao()
     private val parkingHistoryDao = database.parkingHistoryDao()
@@ -136,7 +144,7 @@ class RoomParkingRepository(
                 CoverageWindow(
                     id = newId(),
                     startAt = exitAt,
-                    endAt = exitAt.plus(ruleConfig.coverageDuration),
+                    endAt = exitAt.plus(ruleConfigProvider.current.coverageDuration),
                     sourceHistoryId = history.id,
                     isActive = true,
                     createdAt = now,
